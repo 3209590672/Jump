@@ -20,7 +20,7 @@
 return {
     -- D1 教学武器：校准手枪
     calibratePistol = {
-        recoilPower = 620,
+        recoilPower = 700,
         cooldown = 0.32,
         maxAirShots = 1,
         maxSpeedAfterRecoil = 1100,

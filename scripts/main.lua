@@ -25,10 +25,21 @@ local RespawnSystem = require("gameplay.respawn_system")
 local FinishChecker = require("gameplay.finish_checker")
 local D1Renderer = require("ui.d1_renderer")
 local UIManager = require("ui.ui_manager")
+local VFX = require("ui.vfx")
 
 local playerConfig = require("config.player_config")
-local levelConfig = require("config.level_d1_config")
 local debugConfig = require("config.debug_config")
+
+-- 关卡配置注册表（按 id 索引）
+local levelConfigs = {
+    d1 = require("config.level_d1_config"),
+    ["01"] = require("config.level_01_config"),
+    ["02"] = require("config.level_02_config"),
+    ["03"] = require("config.level_03_config"),
+}
+
+-- 当前激活的关卡配置
+local levelConfig = levelConfigs.d1
 
 -- ===== NanoVG 上下文 =====
 local vg = nil
@@ -69,20 +80,36 @@ local currentInput = {
 
 -- 关卡列表数据（后续可从存档读取 bestTime）
 local levelsData = {
-    { id = "d1", name = "D1 校准训练", unlocked = true, bestTime = nil },
-    -- 后续关卡在此添加
-    -- { id = "d2", name = "D2 风洞走廊", unlocked = false, bestTime = nil },
+    { id = "01", name = "0-1 向上！", unlocked = true, bestTime = nil },
+    { id = "02", name = "0-2 转向！", unlocked = true, bestTime = nil },
+    { id = "03", name = "0-3 补枪！", unlocked = true, bestTime = nil },
+    { id = "d1", name = "D1 综合校准", unlocked = true, bestTime = nil },
 }
 
---- 进入关卡（初始化场景 + 切换到游戏 HUD）
-local function enterLevel()
+-- 当前正在玩的关卡 id
+local currentLevelId = "d1"
+
+--- 进入关卡（按 id 切换配置 + 初始化场景 + 显示 HUD）
+---@param id string 关卡 id
+local function enterLevel(id)
+    id = id or currentLevelId
+    currentLevelId = id
+
+    -- 切换关卡配置
+    levelConfig = levelConfigs[id] or levelConfigs.d1
+
+    -- 初始化场景
     Viewport.init(levelConfig.canvas.w, levelConfig.canvas.h)
     D1Renderer.setLevel(levelConfig)
     RespawnSystem.resetPlayerTransform(player, levelConfig)
+
+    -- 重置状态
     levelState.elapsedTime = 0
     levelState.finished = false
     player.respawnCount = 0
     player.finished = false
+
+    -- 显示游戏 HUD
     UIManager.showPlayingHud()
 end
 
@@ -120,25 +147,27 @@ function Start()
     -- 关卡选择 → 开始游戏
     EventBus.on("ui_start_level", function(data)
         print("[Main] Starting level: " .. tostring(data.id))
-        enterLevel()
+        enterLevel(data.id)
     end)
 
-    -- 结果页 → 重试
+    -- 结果页 → 重试（使用当前关卡 id）
     EventBus.on("ui_retry_level", function()
-        enterLevel()
+        enterLevel(currentLevelId)
     end)
 
     -- 游戏中通关事件 → 显示结果页
     EventBus.on("level_finish", function(data)
         -- 更新最佳成绩
+        local levelName = currentLevelId
         for _, lv in ipairs(levelsData) do
-            if lv.id == "d1" then
+            if lv.id == currentLevelId then
                 if not lv.bestTime or data.time < lv.bestTime then
                     lv.bestTime = data.time
                 end
+                levelName = lv.name
             end
         end
-        UIManager.showResult(player, levelState, "D1 校准训练")
+        UIManager.showResult(player, levelState, levelName)
     end)
 
     -- 调试日志
@@ -151,6 +180,9 @@ function Start()
             print("[Event] Landed on: " .. tostring(data.platformId))
         end)
     end
+
+    -- 初始化视觉反馈
+    VFX.init()
 
     -- 启动时显示标题页
     UIManager.showTitle()
@@ -234,7 +266,10 @@ function HandleUpdate(eventType, eventData)
     -- 步骤 14：终点到达检测
     FinishChecker.update(player, levelConfig.finish, levelState)
 
-    -- 步骤 15：更新 UI HUD
+    -- 步骤 15：更新视觉反馈
+    VFX.update(player, dt)
+
+    -- 步骤 16：更新 UI HUD
     UIManager.updateHud(player, levelState)
 end
 
@@ -253,6 +288,7 @@ function HandleNanoVGRender(eventType, eventData)
 
     nvgBeginFrame(vg, screenW, screenH, 1.0)
     D1Renderer.draw(vg, player, levelState, currentInput)
+    VFX.draw(vg, player)
     nvgEndFrame(vg)
 end
 
