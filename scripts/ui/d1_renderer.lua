@@ -120,7 +120,7 @@ function D1Renderer.drawFinish(vg)
     nvgStroke(vg)
 end
 
---- 玩家：圆角矩形 + 小眼睛
+--- 玩家：圆角矩形 + 小眼睛 + 空中补枪状态光环
 -- position.x = 水平中心，position.y = 底部
 function D1Renderer.drawPlayer(vg, player)
     local pc = visualConfig.playerFill
@@ -132,11 +132,36 @@ function D1Renderer.drawPlayer(vg, player)
     local sw = Viewport.scaleSize(player.width)
     local sh = Viewport.scaleSize(player.height)
 
+    -- 空中补枪状态光环（只在空中显示）
+    if not player.isGrounded then
+        local weaponCfg = require("config.weapon_config")
+        local weapon = weaponCfg.calibratePistol
+        local airLeft = weapon.maxAirShots - player.airShotsUsed
+        local glowColor
+        if airLeft > 0 then
+            -- 有枪可补：亮青色光环
+            glowColor = nvgRGBA(80, 220, 255, 100)
+        else
+            -- 补枪用完：暗红色光环
+            glowColor = nvgRGBA(255, 60, 60, 70)
+        end
+        local glowExpand = Viewport.scaleSize(4)
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, sx - glowExpand, sy - glowExpand,
+            sw + glowExpand * 2, sh + glowExpand * 2,
+            visualConfig.playerCornerRadius + 2)
+        nvgStrokeColor(vg, glowColor)
+        nvgStrokeWidth(vg, Viewport.scaleSize(2))
+        nvgStroke(vg)
+    end
+
+    -- 角色本体
     nvgBeginPath(vg)
     nvgRoundedRect(vg, sx, sy, sw, sh, visualConfig.playerCornerRadius)
     nvgFillColor(vg, nvgRGBA(pc[1], pc[2], pc[3], pc[4]))
     nvgFill(vg)
 
+    -- 小眼睛
     local eyeR = Viewport.scaleSize(visualConfig.playerEyeRadius)
     local eyeX = sx + sw * 0.5
     local eyeY = sy + sh * 0.25
