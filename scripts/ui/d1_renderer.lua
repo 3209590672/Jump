@@ -40,11 +40,12 @@ function D1Renderer.draw(vg, player, levelState, inputState)
     D1Renderer.drawBackground(vg, screenW, screenH)
     D1Renderer.drawFallZone(vg)
     D1Renderer.drawPlatforms(vg)
+    D1Renderer.drawPickups(vg, player)
     D1Renderer.drawFinish(vg)
     D1Renderer.drawPlayer(vg, player)
 
     -- 通关后不显示瞄准线（冻结状态）
-    if not levelState.finished then
+    if not levelState.finished and player.hasGun then
         D1Renderer.drawAimLine(vg, player, inputState.aimDir)
     end
 end
@@ -240,6 +241,41 @@ function D1Renderer.drawAimLine(vg, player, aimDir)
 
     -- 轨迹预测（独立模块）
     TrajectoryPreview.draw(vg, player, aimDir, levelConfig.platforms)
+end
+
+--- 绘制拾取物（枪械等）— 拾取后不再显示
+function D1Renderer.drawPickups(vg, player)
+    if not levelConfig or not levelConfig.pickups then return end
+
+    for _, pickup in ipairs(levelConfig.pickups) do
+        -- 枪已拾取就不画了
+        if pickup.type == "gun" and player.hasGun then
+            goto continue
+        end
+
+        local sx, sy = Viewport.worldToScreen(pickup.x, pickup.y + pickup.h)
+        local sw = Viewport.scaleSize(pickup.w)
+        local sh = Viewport.scaleSize(pickup.h)
+
+        if pickup.type == "gun" then
+            -- 枪械图标：橙色矩形 + 闪烁光环
+            nvgBeginPath(vg)
+            nvgRoundedRect(vg, sx, sy, sw, sh, 3)
+            nvgFillColor(vg, nvgRGBA(255, 160, 40, 240))
+            nvgFill(vg)
+
+            -- 闪烁光环
+            local pulse = math.sin(os.clock() * 4) * 0.3 + 0.7
+            local glowAlpha = math.floor(80 * pulse)
+            nvgBeginPath(vg)
+            nvgRoundedRect(vg, sx - 4, sy - 4, sw + 8, sh + 8, 6)
+            nvgStrokeColor(vg, nvgRGBA(255, 200, 60, glowAlpha))
+            nvgStrokeWidth(vg, 2)
+            nvgStroke(vg)
+        end
+
+        ::continue::
+    end
 end
 
 return D1Renderer

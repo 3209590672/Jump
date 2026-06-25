@@ -27,7 +27,7 @@ function RespawnSystem.resetPlayerTransform(player, level)
     player.velocity.y = 0
     player.isGrounded = false      -- 下一帧会自动检测到平台并设为 true
     player.airShotsUsed = 0
-    player.fireCooldownLeft = 0
+    player.fireCooldownLeft = 0.15 -- 重生后短冷却，防止输入缓冲导致立即开火
     player.finished = false
 end
 

@@ -1,55 +1,100 @@
 -- ============================================================================
--- 视口转换模块
+-- 视口转换模块（支持相机跟随）
 -- 负责逻辑坐标（Y向上）与屏幕坐标（Y向下）之间的转换
 --
 -- 工作原理：
---   物理屏幕可能是任意尺寸（如 1920×1080），本模块计算一个等比缩放 + 居中偏移，
---   使逻辑画布总是完整显示在屏幕中央（letterbox/pillarbox）。
---
--- 画布尺寸：从 level config 的 canvas 字段读取（唯一数据源）
+--   关卡地图可以比屏幕大。viewW × viewH 是"相机可见区域"大小（固定 960×720），
+--   相机中心跟随玩家移动，clamp 在地图边界内。
+--   屏幕始终显示 viewW × viewH 这么大的区域。
 --
 -- 调用时机：
---   启动时调用 Viewport.init(canvasW, canvasH)
---   每帧开头调用 Viewport.update(screenW, screenH)
+--   启动时调用 Viewport.init(mapW, mapH)
+--   每帧调用 Viewport.update(screenW, screenH)
+--   每帧调用 Viewport.follow(targetX, targetY) 让相机跟随玩家
 --   绘制时用 Viewport.worldToScreen(x, y) 转换坐标
 --   鼠标输入时用 Viewport.screenToWorld(sx, sy) 反算逻辑坐标
 -- ============================================================================
 local Viewport = {
-    canvasW = 960,     -- 逻辑画布宽度（由 init 覆盖）
-    canvasH = 720,     -- 逻辑画布高度（由 init 覆盖）
-    scale = 1,         -- 当前帧的缩放比（逻辑px → 屏幕px）
-    offsetX = 0,       -- 水平居中偏移（屏幕像素）
-    offsetY = 0,       -- 垂直居中偏移（屏幕像素）
+    -- 地图总尺寸（关卡可以很大）
+    mapW = 960,
+    mapH = 720,
+
+    -- 相机可见区域尺寸（固定，等同于旧 canvasW/canvasH）
+    viewW = 960,
+    viewH = 720,
+
+    -- 相机左下角在世界中的位置（由 follow 更新）
+    camX = 0,
+    camY = 0,
+
+    -- 屏幕适配参数
+    scale = 1,
+    offsetX = 0,
+    offsetY = 0,
+
+    -- 兼容旧接口
+    canvasW = 960,
+    canvasH = 720,
 }
 
---- 初始化画布尺寸（启动时调用一次，数据源为 levelConfig.canvas）
----@param w number 逻辑画布宽度
----@param h number 逻辑画布高度
-function Viewport.init(w, h)
-    Viewport.canvasW = w
-    Viewport.canvasH = h
+--- 初始化地图尺寸
+---@param mapW number 地图总宽度（逻辑像素）
+---@param mapH number 地图总高度（逻辑像素）
+---@param viewW number|nil 可见区域宽度（默认 960）
+---@param viewH number|nil 可见区域高度（默认 720）
+function Viewport.init(mapW, mapH, viewW, viewH)
+    Viewport.mapW = mapW
+    Viewport.mapH = mapH
+    Viewport.viewW = viewW or 960
+    Viewport.viewH = viewH or 720
+    -- 兼容旧代码
+    Viewport.canvasW = Viewport.viewW
+    Viewport.canvasH = Viewport.viewH
+    -- 相机初始位置
+    Viewport.camX = 0
+    Viewport.camY = 0
 end
 
---- 根据当前屏幕尺寸更新缩放和偏移（每帧调用一次）
----@param screenW number 物理屏幕宽度
----@param screenH number 物理屏幕高度
+--- 根据屏幕尺寸更新缩放（每帧调用）
+---@param screenW number
+---@param screenH number
 function Viewport.update(screenW, screenH)
-    local scaleX = screenW / Viewport.canvasW
-    local scaleY = screenH / Viewport.canvasH
-    Viewport.scale = math.min(scaleX, scaleY)  -- 等比缩放，取较小值保证完整显示
-    Viewport.offsetX = (screenW - Viewport.canvasW * Viewport.scale) * 0.5
-    Viewport.offsetY = (screenH - Viewport.canvasH * Viewport.scale) * 0.5
+    local scaleX = screenW / Viewport.viewW
+    local scaleY = screenH / Viewport.viewH
+    Viewport.scale = math.min(scaleX, scaleY)
+    Viewport.offsetX = (screenW - Viewport.viewW * Viewport.scale) * 0.5
+    Viewport.offsetY = (screenH - Viewport.viewH * Viewport.scale) * 0.5
+end
+
+--- 相机跟随目标（每帧在 update 之后调用）
+-- 将相机中心对准目标，clamp 在地图边界内
+---@param targetX number 跟随目标的 X（逻辑坐标）
+---@param targetY number 跟随目标的 Y（逻辑坐标）
+function Viewport.follow(targetX, targetY)
+    -- 相机中心 = 目标位置
+    local cx = targetX - Viewport.viewW * 0.5
+    local cy = targetY - Viewport.viewH * 0.5
+
+    -- Clamp：不超出地图边界
+    cx = math.max(0, math.min(cx, Viewport.mapW - Viewport.viewW))
+    cy = math.max(0, math.min(cy, Viewport.mapH - Viewport.viewH))
+
+    Viewport.camX = cx
+    Viewport.camY = cy
 end
 
 --- 逻辑世界坐标 → 屏幕坐标（NanoVG 绘制用）
--- 逻辑坐标 Y 向上，屏幕坐标 Y 向下，此处做翻转
----@param x number 逻辑 X（左下角为 0）
+---@param x number 逻辑 X
 ---@param y number 逻辑 Y（向上为正）
 ---@return number, number 屏幕 sx, sy
 function Viewport.worldToScreen(x, y)
-    local sx = Viewport.offsetX + x * Viewport.scale
-    -- canvasH - y：将 Y 轴翻转（逻辑 Y↑ → 屏幕 Y↓）
-    local sy = Viewport.offsetY + (Viewport.canvasH - y) * Viewport.scale
+    -- 先减去相机偏移，得到相对于视口的坐标
+    local relX = x - Viewport.camX
+    local relY = y - Viewport.camY
+
+    local sx = Viewport.offsetX + relX * Viewport.scale
+    -- Y 翻转：视口内 Y 向上 → 屏幕 Y 向下
+    local sy = Viewport.offsetY + (Viewport.viewH - relY) * Viewport.scale
     return sx, sy
 end
 
@@ -58,14 +103,15 @@ end
 ---@param sy number 屏幕 Y
 ---@return number, number 逻辑 x, y
 function Viewport.screenToWorld(sx, sy)
-    local x = (sx - Viewport.offsetX) / Viewport.scale
-    local y = Viewport.canvasH - ((sy - Viewport.offsetY) / Viewport.scale)
-    return x, y
+    local relX = (sx - Viewport.offsetX) / Viewport.scale
+    local relY = Viewport.viewH - ((sy - Viewport.offsetY) / Viewport.scale)
+    -- 加上相机偏移还原到世界坐标
+    return relX + Viewport.camX, relY + Viewport.camY
 end
 
---- 将逻辑尺寸转换为屏幕像素尺寸（用于绘制宽高）
----@param size number 逻辑尺寸（px）
----@return number 屏幕尺寸（px）
+--- 将逻辑尺寸转换为屏幕像素尺寸
+---@param size number
+---@return number
 function Viewport.scaleSize(size)
     return size * Viewport.scale
 end
