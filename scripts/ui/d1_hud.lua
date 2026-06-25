@@ -16,6 +16,8 @@
 -- ============================================================================
 local Viewport = require("core.viewport")
 local weaponConfig = require("config.weapon_config")
+local textConfig = require("config.ui_text_config")
+local visualConfig = require("config.visual_config")
 
 local D1Hud = {}
 
@@ -50,22 +52,21 @@ function D1Hud.draw(vg, player, levelState)
     nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
     nvgFillColor(vg, nvgRGBA(255, 255, 255, 220))
 
-    local timeText = string.format("Time: %.2fs", levelState.elapsedTime)
+    local timeText = string.format(textConfig.timeLabel, levelState.elapsedTime)
     nvgText(vg, 16, 16, timeText, nil)
 
-    local deathText = string.format("Deaths: %d", player.respawnCount)
+    local deathText = string.format(textConfig.deathsLabel, player.respawnCount)
     nvgText(vg, 16, 42, deathText, nil)
 
     -- ===== 空中补枪状态（仅空中时显示） =====
     local weapon = weaponConfig.calibratePistol
     local airShotsLeft = weapon.maxAirShots - player.airShotsUsed
     if not player.isGrounded then
-        -- 绿色=有弹，红色=已用完
         local shotColor = airShotsLeft > 0
             and nvgRGBA(100, 255, 100, 200)
             or nvgRGBA(255, 80, 80, 200)
         nvgFillColor(vg, shotColor)
-        local shotText = string.format("Air: %d/%d", airShotsLeft, weapon.maxAirShots)
+        local shotText = string.format(textConfig.airShotsLabel, airShotsLeft, weapon.maxAirShots)
         nvgText(vg, 16, 68, shotText, nil)
     end
 
@@ -73,8 +74,7 @@ function D1Hud.draw(vg, player, levelState)
     nvgFontSize(vg, 14)
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_BOTTOM)
     nvgFillColor(vg, nvgRGBA(200, 200, 200, 150))
-    nvgText(vg, screenW * 0.5, screenH - 12,
-        "A/D Move | Mouse Aim | LMB Fire | R Restart", nil)
+    nvgText(vg, screenW * 0.5, screenH - 12, textConfig.controlsHint, nil)
 
     -- ===== 通关面板 =====
     if levelState.finished then
@@ -84,23 +84,28 @@ end
 
 --- 通关面板：半透明遮罩 + 居中成绩卡片
 function D1Hud.drawFinishPanel(vg, player, levelState, screenW, screenH)
-    -- 全屏半透明遮罩（强制玩家视线聚焦到面板）
+    local vc = visualConfig
+
+    -- 全屏半透明遮罩
     nvgBeginPath(vg)
     nvgRect(vg, 0, 0, screenW, screenH)
-    nvgFillColor(vg, nvgRGBA(0, 0, 0, 140))
+    local ov = vc.finishOverlay
+    nvgFillColor(vg, nvgRGBA(ov[1], ov[2], ov[3], ov[4]))
     nvgFill(vg)
 
-    -- 面板背景（居中圆角矩形）
-    local panelW = 360
-    local panelH = 200
+    -- 面板背景
+    local panelW = vc.finishPanelWidth
+    local panelH = vc.finishPanelHeight
     local px = (screenW - panelW) * 0.5
     local py = (screenH - panelH) * 0.5
 
     nvgBeginPath(vg)
     nvgRoundedRect(vg, px, py, panelW, panelH, 12)
-    nvgFillColor(vg, nvgRGBA(40, 45, 60, 240))
+    local bg = vc.finishPanelBg
+    nvgFillColor(vg, nvgRGBA(bg[1], bg[2], bg[3], bg[4]))
     nvgFill(vg)
-    nvgStrokeColor(vg, nvgRGBA(220, 200, 50, 200))
+    local bd = vc.finishPanelBorder
+    nvgStrokeColor(vg, nvgRGBA(bd[1], bd[2], bd[3], bd[4]))
     nvgStrokeWidth(vg, 2)
     nvgStroke(vg)
 
@@ -109,28 +114,27 @@ function D1Hud.drawFinishPanel(vg, player, levelState, screenW, screenH)
     nvgFontSize(vg, 28)
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
     nvgFillColor(vg, nvgRGBA(255, 230, 80, 255))
-    nvgText(vg, screenW * 0.5, py + 40, "Calibration Complete", nil)
+    nvgText(vg, screenW * 0.5, py + 40, textConfig.finishTitle, nil)
 
     -- 用时
     nvgFontSize(vg, 20)
     nvgFillColor(vg, nvgRGBA(255, 255, 255, 230))
-    local resultTime = string.format("Time: %.2f s", levelState.elapsedTime)
-    nvgText(vg, screenW * 0.5, py + 80, resultTime, nil)
+    nvgText(vg, screenW * 0.5, py + 80,
+        string.format(textConfig.finishTimeLabel, levelState.elapsedTime), nil)
 
     -- 事故次数
-    local resultDeaths = string.format("Accidents: %d", player.respawnCount)
-    nvgText(vg, screenW * 0.5, py + 110, resultDeaths, nil)
+    nvgText(vg, screenW * 0.5, py + 110,
+        string.format(textConfig.finishDeathsLabel, player.respawnCount), nil)
 
     -- 小评语
     nvgFontSize(vg, 14)
     nvgFillColor(vg, nvgRGBA(180, 180, 200, 200))
-    nvgText(vg, screenW * 0.5, py + 150,
-        "You are now qualified to be hurt by recoil.", nil)
+    nvgText(vg, screenW * 0.5, py + 150, textConfig.finishComment, nil)
 
     -- 重新开始提示
     nvgFontSize(vg, 16)
     nvgFillColor(vg, nvgRGBA(100, 200, 255, 220))
-    nvgText(vg, screenW * 0.5, py + 180, "Press R to retry", nil)
+    nvgText(vg, screenW * 0.5, py + 180, textConfig.finishRetryHint, nil)
 end
 
 return D1Hud

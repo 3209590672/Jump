@@ -9,6 +9,7 @@
 -- 后续接入手机虚拟摇杆时，只需修改此文件的 read() 函数
 -- ============================================================================
 local Viewport = require("core.viewport")
+local inputConfig = require("config.input_config")
 
 local InputController = {}
 
@@ -21,16 +22,16 @@ function InputController.read(player)
     local firePressed = false
     local respawnPressed = false
 
-    -- ===== 水平移动：A/D 键 =====
-    if input:GetKeyDown(KEY_A) then
+    -- ===== 水平移动（键位来自 input_config）=====
+    if input:GetKeyDown(inputConfig.moveLeft) then
         moveAxis = moveAxis - 1
     end
-    if input:GetKeyDown(KEY_D) then
+    if input:GetKeyDown(inputConfig.moveRight) then
         moveAxis = moveAxis + 1
     end
 
-    -- ===== R 键：重新开始 =====
-    if input:GetKeyPress(KEY_R) then
+    -- ===== 重新开始（键位来自 input_config）=====
+    if input:GetKeyPress(inputConfig.restart) then
         respawnPressed = true
     end
 
@@ -59,8 +60,8 @@ function InputController.read(player)
         aimDir.y = -1  -- 鼠标在玩家正中心，默认向下开枪 → 向上飞
     end
 
-    -- ===== 左键开火（仅检测按下瞬间，不是持续按住） =====
-    if input:GetMouseButtonPress(MOUSEB_LEFT) then
+    -- ===== 开火（键位来自 input_config，仅检测按下瞬间） =====
+    if input:GetMouseButtonPress(inputConfig.fireMouse) then
         firePressed = true
     end
 

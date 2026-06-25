@@ -24,10 +24,11 @@ local CollisionChecker = require("gameplay.collision_checker")
 local RespawnSystem = require("gameplay.respawn_system")
 local FinishChecker = require("gameplay.finish_checker")
 local D1Renderer = require("ui.d1_renderer")
-local D1Hud = require("ui.d1_hud")
+local UIManager = require("ui.ui_manager")
 
 local playerConfig = require("config.player_config")
 local levelConfig = require("config.level_d1_config")
+local debugConfig = require("config.debug_config")
 
 -- ===== NanoVG 上下文 =====
 local vg = nil
@@ -66,12 +67,30 @@ local currentInput = {
 -- 生命周期：Start / Stop
 -- ============================================================================
 
+-- 关卡列表数据（后续可从存档读取 bestTime）
+local levelsData = {
+    { id = "d1", name = "D1 校准训练", unlocked = true, bestTime = nil },
+    -- 后续关卡在此添加
+    -- { id = "d2", name = "D2 风洞走廊", unlocked = false, bestTime = nil },
+}
+
+--- 进入关卡（初始化场景 + 切换到游戏 HUD）
+local function enterLevel()
+    Viewport.init(levelConfig.canvas.w, levelConfig.canvas.h)
+    D1Renderer.setLevel(levelConfig)
+    RespawnSystem.resetPlayerTransform(player, levelConfig)
+    levelState.elapsedTime = 0
+    levelState.finished = false
+    player.respawnCount = 0
+    player.finished = false
+    UIManager.showPlayingHud()
+end
+
 function Start()
     SampleStart()
-    -- 保持默认鼠标模式（可见光标，用于瞄准）
     SampleInitMouseMode(MM_ABSOLUTE)
 
-    -- 创建 NanoVG 上下文（参数 1 = 开启抗锯齿）
+    -- 创建 NanoVG 上下文
     vg = nvgCreate(1)
     if not vg then
         print("[Main] ERROR: Failed to create NanoVG context!")
@@ -79,30 +98,67 @@ function Start()
     end
     print("[Main] NanoVG context created")
 
-    -- 初始化 HUD 字体（只调用一次）
-    D1Hud.initFont(vg)
-
-    -- 将玩家放到出生点
-    RespawnSystem.resetPlayerTransform(player, levelConfig)
+    -- 初始化 UI 系统
+    UIManager.init()
 
     -- 订阅引擎事件
-    SubscribeToEvent("Update", "HandleUpdate")               -- 每帧逻辑更新
-    SubscribeToEvent(vg, "NanoVGRender", "HandleNanoVGRender")  -- NanoVG 渲染时机
+    SubscribeToEvent("Update", "HandleUpdate")
+    SubscribeToEvent(vg, "NanoVGRender", "HandleNanoVGRender")
 
-    -- 注册游戏事件监听（调试日志，稳定后可删除）
-    EventBus.on("player_fire", function(data)
-        print(string.format("[Event] Fire at (%.0f, %.0f) aim=(%.2f, %.2f)",
-            data.x, data.y, data.aimX, data.aimY))
-    end)
-    EventBus.on("player_land", function(data)
-        print("[Event] Landed on: " .. tostring(data.platformId))
+    -- ===== 页面流转事件 =====
+
+    -- 标题页 → 关卡选择
+    EventBus.on("ui_goto_level_select", function()
+        UIManager.showLevelSelect(levelsData)
     end)
 
-    print("[Main] D1 Prototype started - No Jumping Allowed!")
-    print("[Main] Controls: A/D move, Mouse aim, LMB fire, R restart")
+    -- 关卡选择 → 返回标题
+    EventBus.on("ui_goto_title", function()
+        UIManager.showTitle()
+    end)
+
+    -- 关卡选择 → 开始游戏
+    EventBus.on("ui_start_level", function(data)
+        print("[Main] Starting level: " .. tostring(data.id))
+        enterLevel()
+    end)
+
+    -- 结果页 → 重试
+    EventBus.on("ui_retry_level", function()
+        enterLevel()
+    end)
+
+    -- 游戏中通关事件 → 显示结果页
+    EventBus.on("level_finish", function(data)
+        -- 更新最佳成绩
+        for _, lv in ipairs(levelsData) do
+            if lv.id == "d1" then
+                if not lv.bestTime or data.time < lv.bestTime then
+                    lv.bestTime = data.time
+                end
+            end
+        end
+        UIManager.showResult(player, levelState, "D1 校准训练")
+    end)
+
+    -- 调试日志
+    if debugConfig.enableEventLog then
+        EventBus.on("player_fire", function(data)
+            print(string.format("[Event] Fire at (%.0f, %.0f) aim=(%.2f, %.2f)",
+                data.x, data.y, data.aimX, data.aimY))
+        end)
+        EventBus.on("player_land", function(data)
+            print("[Event] Landed on: " .. tostring(data.platformId))
+        end)
+    end
+
+    -- 启动时显示标题页
+    UIManager.showTitle()
+    print("[Main] Game started - showing title screen")
 end
 
 function Stop()
+    UIManager.shutdown()
     EventBus.clear()
     if vg then
         nvgDelete(vg)
@@ -118,10 +174,12 @@ end
 ---@param eventData UpdateEventData
 function HandleUpdate(eventType, eventData)
     local dt = eventData["TimeStep"]:GetFloat()
-    -- 防止异常大的 dt 导致物理爆炸（如窗口拖动卡顿后突然释放）
     dt = math.min(dt, 1 / 20)
 
-    -- 步骤 1：刷新视口缩放（屏幕尺寸可能在运行时变化）
+    -- 非游戏页面时不执行游戏逻辑
+    if UIManager.getScreen() ~= "playing" then return end
+
+    -- 步骤 1：刷新视口缩放
     local g = GetGraphics()
     Viewport.update(g:GetWidth(), g:GetHeight())
 
@@ -175,6 +233,9 @@ function HandleUpdate(eventType, eventData)
 
     -- 步骤 14：终点到达检测
     FinishChecker.update(player, levelConfig.finish, levelState)
+
+    -- 步骤 15：更新 UI HUD
+    UIManager.updateHud(player, levelState)
 end
 
 -- ============================================================================
@@ -183,19 +244,15 @@ end
 
 function HandleNanoVGRender(eventType, eventData)
     if not vg then return end
+    -- 非游戏页面时不绘制游戏世界（标题/选关/结果页由 UI 系统渲染）
+    if UIManager.getScreen() ~= "playing" then return end
 
     local g = GetGraphics()
     local screenW = g:GetWidth()
     local screenH = g:GetHeight()
 
     nvgBeginFrame(vg, screenW, screenH, 1.0)
-
-    -- 先绘制场景（平台、玩家、瞄准线）
     D1Renderer.draw(vg, player, levelState, currentInput)
-
-    -- 再绘制 HUD（计时、事故、通关面板）——覆盖在场景之上
-    D1Hud.draw(vg, player, levelState)
-
     nvgEndFrame(vg)
 end
 

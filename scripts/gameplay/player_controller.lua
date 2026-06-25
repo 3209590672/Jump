@@ -37,7 +37,7 @@ end
 ---@param player table
 ---@param moveAxis number -1/0/1
 ---@param dt number
-function PlayerController.applyGroundMove(player, moveAxis, dt)
+function PlayerController.applyGroundMove(player, moveAxis --[[@as number]], dt)
     if player.isGrounded then
         -- 地面移动：加速到目标速度
         local targetVx = moveAxis * playerConfig.moveSpeed
@@ -46,9 +46,10 @@ function PlayerController.applyGroundMove(player, moveAxis, dt)
             playerConfig.groundAcceleration * dt
         )
         -- 松手时施加摩擦使角色停下
+        ---@diagnostic disable-next-line: param-type-mismatch
         if math.abs(moveAxis) < 0.01 then
             player.velocity.x = PlayerController.moveTowards(
-                player.velocity.x, 0,
+                player.velocity.x, 0.0,
                 playerConfig.groundFriction * dt
             )
         end
@@ -94,6 +95,10 @@ end
 -- ============================================================================
 
 --- 将 current 值向 target 线性趋近，最大变化量 maxDelta
+---@param current number
+---@param target number
+---@param maxDelta number
+---@return number
 function PlayerController.moveTowards(current, target, maxDelta)
     if math.abs(target - current) <= maxDelta then
         return target

@@ -1,23 +1,34 @@
 -- ============================================================================
 -- 视口转换模块
--- 负责逻辑坐标（960×720，Y向上）与屏幕坐标（Y向下）之间的转换
+-- 负责逻辑坐标（Y向上）与屏幕坐标（Y向下）之间的转换
 --
 -- 工作原理：
 --   物理屏幕可能是任意尺寸（如 1920×1080），本模块计算一个等比缩放 + 居中偏移，
---   使 960×720 的逻辑画布总是完整显示在屏幕中央（letterbox/pillarbox）。
+--   使逻辑画布总是完整显示在屏幕中央（letterbox/pillarbox）。
+--
+-- 画布尺寸：从 level config 的 canvas 字段读取（唯一数据源）
 --
 -- 调用时机：
+--   启动时调用 Viewport.init(canvasW, canvasH)
 --   每帧开头调用 Viewport.update(screenW, screenH)
 --   绘制时用 Viewport.worldToScreen(x, y) 转换坐标
 --   鼠标输入时用 Viewport.screenToWorld(sx, sy) 反算逻辑坐标
 -- ============================================================================
 local Viewport = {
-    canvasW = 960,     -- 逻辑画布宽度
-    canvasH = 720,     -- 逻辑画布高度
+    canvasW = 960,     -- 逻辑画布宽度（由 init 覆盖）
+    canvasH = 720,     -- 逻辑画布高度（由 init 覆盖）
     scale = 1,         -- 当前帧的缩放比（逻辑px → 屏幕px）
     offsetX = 0,       -- 水平居中偏移（屏幕像素）
     offsetY = 0,       -- 垂直居中偏移（屏幕像素）
 }
+
+--- 初始化画布尺寸（启动时调用一次，数据源为 levelConfig.canvas）
+---@param w number 逻辑画布宽度
+---@param h number 逻辑画布高度
+function Viewport.init(w, h)
+    Viewport.canvasW = w
+    Viewport.canvasH = h
+end
 
 --- 根据当前屏幕尺寸更新缩放和偏移（每帧调用一次）
 ---@param screenW number 物理屏幕宽度

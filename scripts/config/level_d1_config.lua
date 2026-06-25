@@ -18,12 +18,13 @@ return {
     fallY = -60,                            -- 掉落判定线，低于此 Y 值触发重生
     finish = { x = 800, y = 600, w = 100, h = 80 },  -- 终点区域 AABB
 
-    -- 平台列表：{id, x, y, w, h}
+    -- 平台列表：{id, x, y, w, h, type}
     -- x,y = 左下角坐标；platformTop = y + h
+    -- type: "static"(默认) / "moving" / "hazard" / "conveyor"（D1 只用 static）
     platforms = {
-        { id = "start", x = 40,  y = 260, w = 200, h = 24 },   -- 起始平台
-        { id = "p1",    x = 320, y = 340, w = 180, h = 24 },   -- 第一跳
-        { id = "p2",    x = 540, y = 460, w = 160, h = 24 },   -- 第二跳
-        { id = "p3",    x = 720, y = 580, w = 160, h = 24 },   -- 第三跳（靠近终点）
+        { id = "start", x = 40,  y = 260, w = 200, h = 24, type = "static" },
+        { id = "p1",    x = 320, y = 340, w = 180, h = 24, type = "static" },
+        { id = "p2",    x = 540, y = 460, w = 160, h = 24, type = "static" },
+        { id = "p3",    x = 720, y = 580, w = 160, h = 24, type = "static" },
     },
 }
