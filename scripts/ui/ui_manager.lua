@@ -72,7 +72,7 @@ function UIManager.showTitle()
                     },
                     -- 开始按钮
                     UI.Button {
-                        text = "开始跳跃",
+                        text = "接受校准",
                         variant = "primary",
                         width = 180,
                         height = 48,
@@ -216,6 +216,12 @@ function UIManager.showPlayingHud()
         color = { 100, 255, 100, 200 },
     }
 
+    screens.weaponLabel = UI.Label {
+        text = "",
+        fontSize = 14,
+        color = { 255, 200, 80, 180 },
+    }
+
     local root = UI.Panel {
         width = "100%",
         height = "100%",
@@ -230,6 +236,7 @@ function UIManager.showPlayingHud()
                     screens.timeLabel,
                     screens.deathsLabel,
                     screens.airShotsLabel,
+                    screens.weaponLabel,
                 },
             },
             -- 底部操作提示
@@ -265,9 +272,18 @@ function UIManager.updateHud(player, levelState)
     if screens.deathsLabel then
         screens.deathsLabel:SetText(string.format(textConfig.deathsLabel, player.respawnCount))
     end
+    if screens.weaponLabel then
+        local weapon = player.currentWeapon
+        if weapon and player.hasGun then
+            local name = weapon.recoilPower >= 1000 and "霰弹枪" or "校准手枪"
+            screens.weaponLabel:SetText(name)
+        else
+            screens.weaponLabel:SetText("")
+        end
+    end
     if screens.airShotsLabel then
         if not player.isGrounded then
-            local weapon = weaponConfig.calibratePistol
+            local weapon = player.currentWeapon or weaponConfig.calibratePistol
             local airLeft = weapon.maxAirShots - player.airShotsUsed
             screens.airShotsLabel:SetText(string.format(textConfig.airShotsLabel, airLeft, weapon.maxAirShots))
             if airLeft > 0 then

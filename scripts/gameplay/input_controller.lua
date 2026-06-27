@@ -4,6 +4,7 @@
 --   moveAxis     : -1（左）/ 0（停）/ 1（右）
 --   aimDir       : {x, y} 归一化瞄准方向（枪口指向）
 --   firePressed  : boolean 本帧是否按下开火
+--   slowMotionHeld: boolean 是否按住慢动作
 --   respawnPressed: boolean 本帧是否按下重开
 --
 -- 后续接入手机虚拟摇杆时，只需修改此文件的 read() 函数
@@ -15,11 +16,12 @@ local InputController = {}
 
 --- 读取当前帧输入
 ---@param player table 玩家状态（用于计算瞄准方向的参考中心点）
----@return table {moveAxis, aimDir, firePressed, respawnPressed}
+---@return table {moveAxis, aimDir, firePressed, slowMotionHeld, respawnPressed}
 function InputController.read(player)
     local moveAxis = 0
     local aimDir = { x = 0, y = -1 }   -- 默认向下（开火会向上飞）
     local firePressed = false
+    local slowMotionHeld = false
     local respawnPressed = false
 
     -- ===== 水平移动（键位来自 input_config）=====
@@ -65,10 +67,16 @@ function InputController.read(player)
         firePressed = true
     end
 
+    -- ===== 慢动作（右键按住） =====
+    if input:GetMouseButtonDown(inputConfig.slowMotionMouse) then
+        slowMotionHeld = true
+    end
+
     return {
         moveAxis = moveAxis,
         aimDir = aimDir,
         firePressed = firePressed,
+        slowMotionHeld = slowMotionHeld,
         respawnPressed = respawnPressed,
     }
 end

@@ -135,8 +135,8 @@ function D1Renderer.drawPlayer(vg, player)
 
     -- 空中补枪状态光环（只在空中显示）
     if not player.isGrounded then
-        local weaponCfg = require("config.weapon_config")
-        local weapon = weaponCfg.calibratePistol
+        local weapon = player.currentWeapon
+        if not weapon then return end
         local airLeft = weapon.maxAirShots - player.airShotsUsed
         local glowColor
         if airLeft > 0 then
@@ -248,29 +248,39 @@ function D1Renderer.drawPickups(vg, player)
     if not levelConfig or not levelConfig.pickups then return end
 
     for _, pickup in ipairs(levelConfig.pickups) do
-        -- 枪已拾取就不画了
-        if pickup.type == "gun" and player.hasGun then
-            goto continue
-        end
+        -- 已拾取的不画
+        if pickup.type == "gun" and player.hasGun then goto continue end
+        if pickup.type == "shotgun" and player.currentWeapon and player.currentWeapon.recoilPower >= 1000 then goto continue end
 
         local sx, sy = Viewport.worldToScreen(pickup.x, pickup.y + pickup.h)
         local sw = Viewport.scaleSize(pickup.w)
         local sh = Viewport.scaleSize(pickup.h)
 
+        -- 闪烁光环
+        local pulse = math.sin(os.clock() * 4) * 0.3 + 0.7
+        local glowAlpha = math.floor(80 * pulse)
+
         if pickup.type == "gun" then
-            -- 枪械图标：橙色矩形 + 闪烁光环
+            -- 手枪：橙色
             nvgBeginPath(vg)
             nvgRoundedRect(vg, sx, sy, sw, sh, 3)
             nvgFillColor(vg, nvgRGBA(255, 160, 40, 240))
             nvgFill(vg)
-
-            -- 闪烁光环
-            local pulse = math.sin(os.clock() * 4) * 0.3 + 0.7
-            local glowAlpha = math.floor(80 * pulse)
             nvgBeginPath(vg)
             nvgRoundedRect(vg, sx - 4, sy - 4, sw + 8, sh + 8, 6)
             nvgStrokeColor(vg, nvgRGBA(255, 200, 60, glowAlpha))
             nvgStrokeWidth(vg, 2)
+            nvgStroke(vg)
+        elseif pickup.type == "shotgun" then
+            -- 霰弹枪：红橙色，更大
+            nvgBeginPath(vg)
+            nvgRoundedRect(vg, sx, sy, sw, sh, 4)
+            nvgFillColor(vg, nvgRGBA(255, 80, 40, 240))
+            nvgFill(vg)
+            nvgBeginPath(vg)
+            nvgRoundedRect(vg, sx - 4, sy - 4, sw + 8, sh + 8, 7)
+            nvgStrokeColor(vg, nvgRGBA(255, 120, 60, glowAlpha))
+            nvgStrokeWidth(vg, 2.5)
             nvgStroke(vg)
         end
 

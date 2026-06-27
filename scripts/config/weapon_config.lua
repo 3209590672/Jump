@@ -35,22 +35,23 @@ return {
         },
     },
 
-    -- 预留：霰弹枪（散射 + 短距高冲量）
-    -- shotgun = {
-    --     recoilPower = 900,
-    --     cooldown = 0.8,
-    --     maxAirShots = 0,
-    --     maxSpeedAfterRecoil = 1300,
-    --     trajectoryPreview = "partial",
-    --     allowAirRetarget = false,
-    --     chargeMode = "none",
-    --     trajectory = {
-    --         mode = "partial",
-    --         previewTime = 0.5,
-    --         sampleCount = 10,
-    --         color = { 255, 180, 80, 120 },
-    --     },
-    -- },
+    -- D2 力量武器：霰弹枪
+    -- 大冲量、长冷却、无空中补枪、半段轨迹
+    shotgun = {
+        recoilPower = 1100,
+        cooldown = 0.9,
+        maxAirShots = 0,
+        maxSpeedAfterRecoil = 1400,
+        trajectoryPreview = "partial",
+        allowAirRetarget = false,
+        chargeMode = "none",
+        trajectory = {
+            mode = "partial",
+            previewTime = 0.6,
+            sampleCount = 10,
+            color = { 255, 180, 80, 120 },
+        },
+    },
 
     -- 预留：三连发（快速三次弱冲量）
     -- burstPistol = {

@@ -48,6 +48,16 @@ function DialogBox.isActive()
     return state.active
 end
 
+--- 立即关闭并清理对话框（完整重开 / 切关时调用）
+function DialogBox.reset()
+    state.active = false
+    state.text = ""
+    state.onClose = nil
+    state.charIndex = 0
+    state.charTimer = 0
+    state.fullTextShown = false
+end
+
 --- 每帧更新（打字机效果 + 输入检测）
 ---@param dt number
 function DialogBox.update(dt)

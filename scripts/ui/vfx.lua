@@ -59,6 +59,36 @@ local quip = {
 -- ===== 相机前瞻 =====
 local lookahead = { x = 0, y = 0, strength = 30, smoothing = 5 }
 
+--- 清理所有运行中反馈（完整重开 / 切关时调用）
+function VFX.reset()
+    muzzleFlash.active = false
+    muzzleFlash.timer = 0
+
+    trail.points = {}
+    trail.spawnTimer = 0
+
+    landingDust.particles = {}
+    landingDust._pending = false
+
+    respawnFlash.active = false
+    respawnFlash.timer = 0
+
+    hitstop.active = false
+    hitstop.timer = 0
+
+    screenShake.active = false
+    screenShake.timer = 0
+    screenShake.offsetX = 0
+    screenShake.offsetY = 0
+
+    quip.active = false
+    quip.timer = 0
+    quip.text = ""
+
+    lookahead.x = 0
+    lookahead.y = 0
+end
+
 --- 初始化
 function VFX.init()
     EventBus.on("player_fire", function(data)
@@ -202,12 +232,13 @@ function VFX.update(player, dt)
 end
 
 --- 绘制所有 VFX
-function VFX.draw(vg, player)
+function VFX.draw(vg, player, inputState)
     VFX.drawTrail(vg)
     VFX.drawLandingDust(vg)
     VFX.drawMuzzleFlash(vg)
     VFX.drawRespawnFlash(vg)
     VFX.drawQuip(vg)
+    VFX.drawSlowMotionOverlay(vg, inputState)
 end
 
 -- ===== 内部绘制函数 =====
@@ -279,6 +310,41 @@ function VFX.drawQuip(vg)
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_BOTTOM)
     nvgFillColor(vg, nvgRGBA(220, 220, 240, alpha))
     nvgText(vg, screenW * 0.5, screenH - 50, quip.text, nil)
+end
+
+function VFX.drawSlowMotionOverlay(vg, inputState)
+    if not inputState or not inputState.slowMotionHeld then return end
+
+    local g = GetGraphics()
+    local screenW, screenH = g:GetWidth(), g:GetHeight()
+
+    nvgBeginPath(vg)
+    nvgRect(vg, 0, 0, screenW, screenH)
+    nvgFillColor(vg, nvgRGBA(20, 45, 90, 36))
+    nvgFill(vg)
+
+    local edge = 70
+    nvgBeginPath(vg)
+    nvgRect(vg, 0, 0, screenW, edge)
+    nvgFillPaint(vg, nvgLinearGradient(vg, 0, 0, 0, edge,
+        nvgRGBA(80, 180, 255, 46), nvgRGBA(80, 180, 255, 0)))
+    nvgFill(vg)
+
+    nvgBeginPath(vg)
+    nvgRect(vg, 0, screenH - edge, screenW, edge)
+    nvgFillPaint(vg, nvgLinearGradient(vg, 0, screenH - edge, 0, screenH,
+        nvgRGBA(80, 180, 255, 0), nvgRGBA(80, 180, 255, 46)))
+    nvgFill(vg)
+
+    for i = 1, 3 do
+        local y = screenH * (0.32 + i * 0.08)
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, 0, y)
+        nvgLineTo(vg, screenW, y)
+        nvgStrokeColor(vg, nvgRGBA(120, 220, 255, 18))
+        nvgStrokeWidth(vg, 1)
+        nvgStroke(vg)
+    end
 end
 
 function VFX._showQuip()

@@ -11,18 +11,20 @@
 --   2. 如果在空中，补枪次数未用完（maxAirShots=1）
 --   3. 地面开火不消耗补枪次数
 -- ============================================================================
-local weaponConfig = require("config.weapon_config")
 local EventBus = require("core.event_bus")
 
-local weapon = weaponConfig.calibratePistol
 local RecoilSystem = {}
 
 --- 尝试开火
 -- 成功时修改 player.velocity 并消耗资源
+-- 从 player.currentWeapon 读取武器参数（不硬编码具体武器）
 ---@param player table 玩家状态
 ---@param aimDir table {x, y} 瞄准方向（枪口指向，归一化）
 ---@return boolean 是否成功开火
 function RecoilSystem.tryFire(player, aimDir)
+    local weapon = player.currentWeapon
+    if not weapon then return false end
+
     -- 条件 1：冷却检查
     if player.fireCooldownLeft > 0 then
         return false
@@ -65,11 +67,15 @@ function RecoilSystem.tryFire(player, aimDir)
     end
 
     -- 广播开火事件（供音效、粒子等模块监听）
+    -- weaponId 用于区分音效/VFX
+    local weaponId = "pistol"
+    if weapon.recoilPower >= 1000 then weaponId = "shotgun" end
     EventBus.emit("player_fire", {
         x = player.position.x,
         y = player.position.y,
         aimX = dx,
         aimY = dy,
+        weaponId = weaponId,
     })
 
     return true

@@ -11,6 +11,7 @@ return {
     -- 操作
     restart = KEY_R,
     fireMouse = MOUSEB_LEFT,
+    slowMotionMouse = MOUSEB_RIGHT,
 
     -- 预留：后续可能用到的键位
     -- pause = KEY_ESCAPE,

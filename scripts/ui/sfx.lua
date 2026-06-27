@@ -37,9 +37,14 @@ function SFX.init()
     -- 保持场景存活
     SFX._scene = audioScene
 
-    -- 注册事件
+    -- 注册事件（枪声根据武器类型切换）
     EventBus.on("player_fire", function(data)
-        playSound("audio/sfx/fire_pistol.ogg", 0.5)
+        local weaponId = data.weaponId or "pistol"
+        if weaponId == "shotgun" then
+            playSound("audio/sfx/fire_shotgun.ogg", 0.55)
+        else
+            playSound("audio/sfx/fire_pistol.ogg", 0.5)
+        end
     end)
 
     EventBus.on("player_land", function(data)
@@ -53,6 +58,15 @@ function SFX.init()
     end)
 
     print("[SFX] Sound system initialized")
+end
+
+--- 清理当前音效残留（完整重开 / 切关时调用）
+function SFX.reset()
+    if not sfxNode then return end
+    local source = sfxNode:GetComponent("SoundSource")
+    if source then
+        source:Stop()
+    end
 end
 
 return SFX

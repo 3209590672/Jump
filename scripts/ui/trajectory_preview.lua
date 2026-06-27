@@ -20,7 +20,6 @@
 local Viewport = require("core.viewport")
 local trajConfig = require("config.trajectory_config")
 local playerConfig = require("config.player_config")
-local weaponConfig = require("config.weapon_config")
 
 local TrajectoryPreview = {}
 
@@ -34,13 +33,17 @@ function TrajectoryPreview.draw(vg, player, aimDir, platforms)
     -- 总开关
     if not trajConfig.enabled then return end
 
-    -- 只在地面上、且尚未开火时显示轨迹（第一次反冲辅助瞄准）
-    -- 空中不显示：空中补枪靠手感，不靠辅助线
+    -- 只在地面上、且尚未开火时显示轨迹
     if not player.isGrounded then return end
 
-    local weapon = weaponConfig.calibratePistol
+    local weapon = player.currentWeapon
+    if not weapon then return end
 
-    -- 冷却中不显示（刚开完火还没离地的瞬间）
+    -- 武器轨迹模式：none 则不显示
+    local trajMode = weapon.trajectoryPreview or "full"
+    if trajMode == "none" then return end
+
+    -- 冷却中不显示
     if player.fireCooldownLeft > 0 then return end
 
     -- 模拟初始速度 = 当前速度 + 反冲冲量
@@ -58,9 +61,22 @@ function TrajectoryPreview.draw(vg, player, aimDir, platforms)
     -- 模拟起点：玩家底部中心
     local simX = player.position.x
     local simY = player.position.y
+    local halfW = player.width * 0.5
+
+    -- 步数根据武器轨迹配置动态计算
+    local previewTime = (weapon.trajectory and weapon.trajectory.previewTime) or (trajConfig.totalSteps * trajConfig.simDt)
+    local totalSteps = math.floor(previewTime / trajConfig.simDt)
+    if trajMode == "partial" then
+        totalSteps = math.floor(totalSteps * 0.5)
+    elseif trajMode == "directionOnly" then
+        totalSteps = math.floor(totalSteps * 0.2)
+    end
 
     -- 逐步模拟并绘制
-    for i = 1, trajConfig.totalSteps do
+    for i = 1, totalSteps do
+        local prevX = simX
+        local prevY = simY
+
         -- 重力（与 player_controller 相同的分离重力）
         local g = simVy > 0 and playerConfig.gravity or playerConfig.fallGravity
         simVy = simVy - g * trajConfig.simDt
@@ -72,16 +88,24 @@ function TrajectoryPreview.draw(vg, player, aimDir, platforms)
         simX = simX + simVx * trajConfig.simDt
         simY = simY + simVy * trajConfig.simDt
 
-        -- 平台碰撞预测（简化：点穿过平台顶即视为落地）
+        -- 平台碰撞预测：按玩家脚底 AABB 穿越平台顶面判断，尽量贴近真实落地
         local hitPlatform = false
         for _, p in ipairs(platforms) do
             local pTop = p.y + p.h
-            if simX >= p.x and simX <= p.x + p.w then
-                if simY <= pTop and simY >= pTop - trajConfig.platformHitTolerance and simVy <= 0 then
-                    simY = pTop
-                    hitPlatform = true
-                    break
-                end
+            local prevBottom = prevY
+            local simBottom = simY
+            local prevLeft = prevX - halfW
+            local prevRight = prevX + halfW
+            local simLeft = simX - halfW
+            local simRight = simX + halfW
+            local hOverlap = simRight > p.x and simLeft < p.x + p.w
+            local prevHOverlap = prevRight > p.x and prevLeft < p.x + p.w
+            local crossedTop = prevBottom >= pTop and simBottom <= pTop + trajConfig.platformHitTolerance
+
+            if hOverlap and prevHOverlap and crossedTop and simVy <= 0 then
+                simY = pTop
+                hitPlatform = true
+                break
             end
         end
 

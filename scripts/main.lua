@@ -35,8 +35,10 @@ local debugConfig = require("config.debug_config")
 
 -- 关卡配置注册表（按 id 索引）
 local levelConfigs = {
-    ["01"] = require("config.level_01_config"),
-    -- 后续关卡在此添加
+    ["01"]  = require("config.level_01_config"),
+    ["2-1"] = require("config.level_2_1_config"),
+    ["2-2"] = require("config.level_2_2_config"),
+    ["2-3"] = require("config.level_2_3_config"),
 }
 
 -- 当前激活的关卡配置
@@ -60,6 +62,7 @@ local player = {
     respawnCount = 0,          -- 累计事故（掉落）次数
     finished = false,          -- 是否已通关
     hasGun = true,             -- 是否拥有枪械（拾取前为 false）
+    currentWeapon = nil,       -- 当前武器配置引用（由 enterLevel 设置）
 }
 
 -- ===== 关卡运行时状态 =====
@@ -73,7 +76,13 @@ local currentInput = {
     moveAxis = 0,              -- -1/0/1
     aimDir = { x = 0, y = -1 },  -- 归一化瞄准方向
     firePressed = false,
+    slowMotionHeld = false,
     respawnPressed = false,
+}
+
+-- ===== 慢动作参数 =====
+local slowMotion = {
+    scale = 0.35,
 }
 
 -- ============================================================================
@@ -82,8 +91,10 @@ local currentInput = {
 
 -- 关卡列表数据（后续可从存档读取 bestTime）
 local levelsData = {
-    { id = "01", name = "入职校准", unlocked = true, bestTime = nil },
-    -- 后续关卡在此添加
+    { id = "01",  name = "入职校准", unlocked = true, bestTime = nil },
+    { id = "2-1", name = "2-1 大力！", unlocked = true, bestTime = nil },
+    { id = "2-2", name = "2-2 跨越！", unlocked = true, bestTime = nil },
+    { id = "2-3", name = "2-3 刹车！", unlocked = true, bestTime = nil },
 }
 
 -- 当前正在玩的关卡 id
@@ -103,14 +114,25 @@ local function enterLevel(id)
     D1Renderer.setLevel(levelConfig)
     RespawnSystem.resetPlayerTransform(player, levelConfig)
 
+    -- 清理上一局遗留反馈
+    VFX.reset()
+    SFX.reset()
+    DialogBox.reset()
+
     -- 重置状态
     levelState.elapsedTime = 0
     levelState.finished = false
     player.respawnCount = 0
     player.finished = false
 
-    -- 枪械状态
+    -- 枪械状态（根据关卡配置选择初始武器）
+    local weaponConfig = require("config.weapon_config")
     player.hasGun = levelConfig.startWithGun ~= false
+    if levelConfig.startWeapon == "shotgun" then
+        player.currentWeapon = weaponConfig.shotgun
+    else
+        player.currentWeapon = weaponConfig.calibratePistol
+    end
 
     -- 加载触发区域
     TriggerSystem.load(levelConfig.triggers)
@@ -207,7 +229,13 @@ function Start()
         -- 拾取枪械
         if id == "pickup_gun" then
             player.hasGun = true
-            print("[Main] Gun picked up!")
+            local wc = require("config.weapon_config")
+            player.currentWeapon = wc.calibratePistol
+            print("[Main] Pistol picked up!")
+        elseif id == "pickup_shotgun" then
+            local wc = require("config.weapon_config")
+            player.currentWeapon = wc.shotgun
+            print("[Main] Shotgun picked up!")
         end
     end)
 
@@ -238,6 +266,12 @@ function HandleUpdate(eventType, eventData)
     -- 非游戏页面时不执行游戏逻辑
     if UIManager.getScreen() ~= "playing" then return end
 
+    -- 步骤 0：R 键重开优先级最高，即使对话 / hitstop 激活也必须生效
+    if input:GetKeyPress(KEY_R) then
+        enterLevel(currentLevelId)
+        return
+    end
+
     -- 步骤 0a：VFX 计时更新（hitstop/屏震独立于玩法）
     VFX.update(player, dt)
 
@@ -261,23 +295,20 @@ function HandleUpdate(eventType, eventData)
 
     -- 步骤 2：读取输入
     currentInput = InputController.read(player)
+    local gameDt = currentInput.slowMotionHeld and (dt * slowMotion.scale) or dt
 
-    -- 步骤 3：更新计时（通关后停止）
+    -- 步骤 3：更新计时（通关后停止，使用真实时间）
     if not levelState.finished then
         levelState.elapsedTime = levelState.elapsedTime + dt
     end
 
     -- 步骤 4：更新开火冷却
-    PlayerController.updateCooldown(player, dt)
+    PlayerController.updateCooldown(player, gameDt)
 
     -- 步骤 5：保存上一帧位置（碰撞穿越判定需要）
     PlayerController.savePreviousPosition(player)
 
-    -- 步骤 6：处理 R 键重开（优先级最高，立即生效）
-    if currentInput.respawnPressed then
-        RespawnSystem.restartRun(player, levelConfig, levelState)
-        return  -- 重开后本帧不再继续
-    end
+    -- 步骤 6：R 键已在步骤 0 处理，避免被对话 / hitstop 拦截
 
     -- 通关后冻结所有玩法逻辑（只保留 R 键可用）
     if levelState.finished then
@@ -290,16 +321,16 @@ function HandleUpdate(eventType, eventData)
     end
 
     -- 步骤 8：水平移动（地面加速/摩擦，空中微调）
-    PlayerController.applyGroundMove(player, currentInput.moveAxis, dt)
+    PlayerController.applyGroundMove(player, currentInput.moveAxis, gameDt)
 
     -- 步骤 9：施加重力（上升轻、下落重）
-    PlayerController.applyGravity(player, dt)
+    PlayerController.applyGravity(player, gameDt)
 
     -- 步骤 10：限制速度（防止极端情况）
     PlayerController.clampVelocity(player)
 
     -- 步骤 11：速度积分到位置
-    PlayerController.integrate(player, dt)
+    PlayerController.integrate(player, gameDt)
 
     -- 步骤 12：平台碰撞检测与修正
     CollisionChecker.resolvePlatforms(player, levelConfig.platforms)
@@ -332,7 +363,7 @@ function HandleNanoVGRender(eventType, eventData)
 
     nvgBeginFrame(vg, screenW, screenH, 1.0)
     D1Renderer.draw(vg, player, levelState, currentInput)
-    VFX.draw(vg, player)
+    VFX.draw(vg, player, currentInput)
     DialogBox.draw(vg)
     nvgEndFrame(vg)
 end
