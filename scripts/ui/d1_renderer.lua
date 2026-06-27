@@ -32,21 +32,23 @@ end
 ---@param player table 玩家状态
 ---@param levelState table 关卡状态
 ---@param inputState table 输入状态（含 aimDir）
-function D1Renderer.draw(vg, player, levelState, inputState)
+---@param opts table|nil {platforms = table[]|nil}
+function D1Renderer.draw(vg, player, levelState, inputState, opts)
     local g = GetGraphics()
     local screenW = g:GetWidth()
     local screenH = g:GetHeight()
 
     D1Renderer.drawBackground(vg, screenW, screenH)
     D1Renderer.drawFallZone(vg)
-    D1Renderer.drawPlatforms(vg)
+    D1Renderer.drawPlatforms(vg, opts and opts.platforms or nil)
     D1Renderer.drawPickups(vg, player)
     D1Renderer.drawFinish(vg)
     D1Renderer.drawPlayer(vg, player)
 
     -- 通关后不显示瞄准线（冻结状态）
     if not levelState.finished and player.hasGun then
-        D1Renderer.drawAimLine(vg, player, inputState.aimDir)
+        local platforms = (opts and opts.platforms) or (levelConfig and levelConfig.platforms) or {}
+        D1Renderer.drawAimLine(vg, player, inputState.aimDir, platforms)
     end
 end
 
@@ -81,10 +83,12 @@ function D1Renderer.drawFallZone(vg)
 end
 
 --- 平台：矩形 + 顶部高亮线（表示可着陆面）
-function D1Renderer.drawPlatforms(vg)
+-- 支持传入外部平台列表（爬塔模式）
+function D1Renderer.drawPlatforms(vg, overridePlatforms)
     local pf = visualConfig.platformFill
     local pt = visualConfig.platformTopLine
-    for _, p in ipairs(levelConfig.platforms) do
+    local platformList = overridePlatforms or (levelConfig and levelConfig.platforms) or {}
+    for _, p in ipairs(platformList) do
         local sx, sy = Viewport.worldToScreen(p.x, p.y + p.h)
         local sw = Viewport.scaleSize(p.w)
         local sh = Viewport.scaleSize(p.h)
@@ -173,7 +177,7 @@ function D1Renderer.drawPlayer(vg, player)
 end
 
 --- 瞄准指示器：渐变箭头（从粗到细 + 三角箭头尖端）
-function D1Renderer.drawAimLine(vg, player, aimDir)
+function D1Renderer.drawAimLine(vg, player, aimDir, platforms)
     local ac = visualConfig.aimLineColor
     local cx = player.position.x
     local cy = player.position.y + player.height * 0.5
@@ -194,7 +198,7 @@ function D1Renderer.drawAimLine(vg, player, aimDir)
     local dy = sy2 - sy1
     local len = math.sqrt(dx * dx + dy * dy)
     if len < 1 then
-        TrajectoryPreview.draw(vg, player, aimDir, levelConfig.platforms)
+        TrajectoryPreview.draw(vg, player, aimDir, platforms)
         return
     end
     local nx = dx / len  -- 单位方向
@@ -240,7 +244,7 @@ function D1Renderer.drawAimLine(vg, player, aimDir)
     nvgFill(vg)
 
     -- 轨迹预测（独立模块）
-    TrajectoryPreview.draw(vg, player, aimDir, levelConfig.platforms)
+    TrajectoryPreview.draw(vg, player, aimDir, platforms)
 end
 
 --- 绘制拾取物（枪械等）— 拾取后不再显示

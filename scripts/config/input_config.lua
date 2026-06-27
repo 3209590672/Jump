@@ -13,9 +13,11 @@ return {
     fireMouse = MOUSEB_LEFT,
     slowMotionMouse = MOUSEB_RIGHT,
 
-    -- 预留：后续可能用到的键位
+    -- 武器切换
+    weapon1 = KEY_1,
+    weapon2 = KEY_2,
+
+    -- 预留
     -- pause = KEY_ESCAPE,
     -- interact = KEY_E,
-    -- weaponSwitch1 = KEY_1,
-    -- weaponSwitch2 = KEY_2,
 }

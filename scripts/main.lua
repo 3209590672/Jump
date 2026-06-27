@@ -29,16 +29,18 @@ local VFX = require("ui.vfx")
 local DialogBox = require("ui.dialog_box")
 local TriggerSystem = require("gameplay.trigger_system")
 local SFX = require("ui.sfx")
+local TowerGenerator = require("gameplay.tower_generator")
 
 local playerConfig = require("config.player_config")
 local debugConfig = require("config.debug_config")
 
 -- 关卡配置注册表（按 id 索引）
 local levelConfigs = {
-    ["01"]  = require("config.level_01_config"),
-    ["2-1"] = require("config.level_2_1_config"),
-    ["2-2"] = require("config.level_2_2_config"),
-    ["2-3"] = require("config.level_2_3_config"),
+    ["01"]    = require("config.level_01_config"),
+    ["2-1"]   = require("config.level_2_1_config"),
+    ["2-2"]   = require("config.level_2_2_config"),
+    ["2-3"]   = require("config.level_2_3_config"),
+    ["tower"] = require("config.level_tower_config"),
 }
 
 -- 当前激活的关卡配置
@@ -91,11 +93,15 @@ local slowMotion = {
 
 -- 关卡列表数据（后续可从存档读取 bestTime）
 local levelsData = {
-    { id = "01",  name = "入职校准", unlocked = true, bestTime = nil },
-    { id = "2-1", name = "2-1 大力！", unlocked = true, bestTime = nil },
-    { id = "2-2", name = "2-2 跨越！", unlocked = true, bestTime = nil },
-    { id = "2-3", name = "2-3 刹车！", unlocked = true, bestTime = nil },
+    { id = "01",    name = "入职校准", unlocked = true, bestTime = nil },
+    { id = "2-1",   name = "2-1 大力！", unlocked = true, bestTime = nil },
+    { id = "2-2",   name = "2-2 跨越！", unlocked = true, bestTime = nil },
+    { id = "2-3",   name = "2-3 刹车！", unlocked = true, bestTime = nil },
+    { id = "tower", name = "无限爬塔", unlocked = true, bestTime = nil },
 }
+
+-- 爬塔模式标记
+local isTowerMode = false
 
 -- 当前正在玩的关卡 id
 local currentLevelId = "01"
@@ -132,6 +138,12 @@ local function enterLevel(id)
         player.currentWeapon = weaponConfig.shotgun
     else
         player.currentWeapon = weaponConfig.calibratePistol
+    end
+
+    -- 爬塔模式初始化
+    isTowerMode = (id == "tower")
+    if isTowerMode then
+        TowerGenerator.init(levelConfig.tower, levelConfig.canvas.w)
     end
 
     -- 加载触发区域
@@ -283,10 +295,18 @@ function HandleUpdate(eventType, eventData)
     Viewport.update(g:GetWidth(), g:GetHeight())
     local lx, ly = VFX.getLookahead()
     local sx, sy = VFX.getShakeOffset()
-    Viewport.follow(
-        player.position.x + lx + sx,
-        player.position.y + player.height * 0.5 + ly + sy
-    )
+    local followX = player.position.x + lx + sx
+    local followY = player.position.y + player.height * 0.5 + ly + sy
+
+    -- 爬塔模式：相机只往上，不跟随下落
+    if isTowerMode then
+        local currentCamCenter = Viewport.camY + Viewport.viewH * 0.5
+        if followY < currentCamCenter then
+            followY = currentCamCenter  -- 不下降
+        end
+    end
+
+    Viewport.follow(followX, followY)
 
     -- 对话或 hitstop 激活时不执行玩法逻辑
     if DialogBox.isActive() or VFX.isHitstopActive() then
@@ -315,6 +335,17 @@ function HandleUpdate(eventType, eventData)
         return
     end
 
+    -- 步骤 6.5：武器切换（爬塔模式按 1/2 切换）
+    if isTowerMode or (levelConfig.enableWeaponSwitch) then
+        local inputCfg = require("config.input_config")
+        local wc = require("config.weapon_config")
+        if input:GetKeyPress(inputCfg.weapon1) then
+            player.currentWeapon = wc.calibratePistol
+        elseif input:GetKeyPress(inputCfg.weapon2) then
+            player.currentWeapon = wc.shotgun
+        end
+    end
+
     -- 步骤 7：开火与反冲（必须拥有枪械）
     if currentInput.firePressed and player.hasGun then
         RecoilSystem.tryFire(player, currentInput.aimDir)
@@ -333,16 +364,43 @@ function HandleUpdate(eventType, eventData)
     PlayerController.integrate(player, gameDt)
 
     -- 步骤 12：平台碰撞检测与修正
-    CollisionChecker.resolvePlatforms(player, levelConfig.platforms)
+    if isTowerMode then
+        -- 爬塔：使用动态生成的平台
+        local towerPlatforms = TowerGenerator.getPlatforms()
+        CollisionChecker.resolvePlatforms(player, towerPlatforms)
+    else
+        CollisionChecker.resolvePlatforms(player, levelConfig.platforms)
+    end
 
-    -- 步骤 13：掉落重生检测
-    RespawnSystem.update(player, levelConfig, levelState)
+    -- 步骤 13：掉落/死亡检测
+    if isTowerMode then
+        -- 爬塔：更新高度 + 生成新平台 + 死亡判定
+        TowerGenerator.updateMaxHeight(player.position.y)
+        local camBottom = Viewport.camY
+        local camTop = camBottom + Viewport.viewH
+        TowerGenerator.update(camTop, camBottom)
+
+        -- 掉到相机底部以下 → 结算
+        local deathLine = camBottom - levelConfig.tower.deathBelowCamera
+        if player.position.y < deathLine then
+            levelState.finished = true
+            levelState.elapsedTime = TowerGenerator.getMaxHeight()  -- 用高度作为分数
+            EventBus.emit("level_finish", {
+                time = levelState.elapsedTime,
+                respawnCount = player.respawnCount,
+            })
+        end
+    else
+        RespawnSystem.update(player, levelConfig, levelState)
+    end
 
     -- 步骤 14：触发区域检测
     TriggerSystem.update(player)
 
-    -- 步骤 15：终点到达检测
-    FinishChecker.update(player, levelConfig.finish, levelState)
+    -- 步骤 15：终点到达检测（非爬塔模式）
+    if not isTowerMode then
+        FinishChecker.update(player, levelConfig.finish, levelState)
+    end
 
     -- 步骤 16：更新 UI HUD
     UIManager.updateHud(player, levelState)
@@ -362,7 +420,11 @@ function HandleNanoVGRender(eventType, eventData)
     local screenH = g:GetHeight()
 
     nvgBeginFrame(vg, screenW, screenH, 1.0)
-    D1Renderer.draw(vg, player, levelState, currentInput)
+    local drawOpts = nil
+    if isTowerMode then
+        drawOpts = { platforms = TowerGenerator.getPlatforms() }
+    end
+    D1Renderer.draw(vg, player, levelState, currentInput, drawOpts)
     VFX.draw(vg, player, currentInput)
     DialogBox.draw(vg)
     nvgEndFrame(vg)
